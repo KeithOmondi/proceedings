@@ -1,268 +1,284 @@
-// DrDashboard.tsx
+// pages/dr/DrDashboard.tsx
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
 import {
   getMySubmissions,
+  getSubmissionStats,
   clearError,
-  type StationRequirementSummary,
-} from '../../store/slices/stationRequirementsSlice';
+} from '../../store/slices/formBuilderSlice';
 import type { AppDispatch, RootState } from '../../store/store';
 
 const DrDashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { submissions, isLoading, error } = useSelector(
-    (state: RootState) => state.stationRequirements
-  );
+  const {
+    submissions,
+    isLoading,
+    error,
+  } = useSelector((state: RootState) => state.pendingProceedings);
   const { user, accessToken, isInitializing } = useSelector((state: RootState) => state.auth);
 
-  // Calculate stats using useMemo - Simplified: Only Draft and Submitted
-  const stats = useMemo(() => {
-    if (submissions.length === 0) {
-      return {
-        totalSubmissions: 0,
-        draftsCount: 0,
-        submittedCount: 0,
-        totalFileFolders: 0,
-        totalRegisters: 0,
-      };
-    }
-
-    const draftCount = submissions.filter((s) => s.status === 'draft').length;
-    const submittedCount = submissions.filter((s) => s.status === 'submitted').length;
-
-    const totalFileFolders = submissions.reduce((sum, s) => sum + s.fileFoldersTotal, 0);
-    const totalRegisters = submissions.reduce((sum, s) => sum + s.registersTotal, 0);
-
-    return {
-      totalSubmissions: submissions.length,
-      draftsCount: draftCount,
-      submittedCount: submittedCount,
-      totalFileFolders,
-      totalRegisters,
-    };
-  }, [submissions]);
-
-  useEffect(() => {
-    if (accessToken && !isInitializing) {
-      dispatch(getMySubmissions({ page: 1, limit: 100 }));
-    }
-  }, [dispatch, accessToken, isInitializing]);
-
-  // Clear error on unmount
-  useEffect(() => {
-    return () => {
-      dispatch(clearError());
-    };
+  // ✅ Load data
+  const loadData = useCallback(() => {
+    dispatch(getMySubmissions({
+      page: 1,
+      limit: 10,
+    }));
+    dispatch(getSubmissionStats());
   }, [dispatch]);
 
-  const formatDate = (dateString?: string): string => {
-    if (!dateString) return '—';
-    try {
-      return new Date(dateString).toLocaleDateString('en-KE', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return dateString;
+  // Load data on mount
+  useEffect(() => {
+    if (!isInitializing && accessToken) {
+      loadData();
     }
-  };
+  }, [isInitializing, accessToken, loadData]);
 
-  // Simplified status badge - only Draft and Submitted
-  const getStatusBadge = (status: string): React.ReactNode => {
-    if (status === 'draft') {
-      return <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">Draft</span>;
-    }
-    if (status === 'submitted') {
-      return <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-800 text-xs font-semibold">Submitted</span>;
-    }
-    return <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-800 text-xs font-semibold">Unknown</span>;
-  };
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!isLoading) {
+        loadData();
+      }
+    }, 30000);
 
-  if (isInitializing) {
+    return () => clearInterval(interval);
+  }, [isLoading, loadData]);
+
+  if (isInitializing || isLoading) {
     return (
-      <div className="min-h-screen bg-[#f7f5f0] flex flex-col items-center justify-center p-4">
-        <div className="w-12 h-12 border-4 border-[#1e3a5f]/20 border-t-[#1e3a5f] rounded-full animate-spin"></div>
-        <p className="mt-4 text-sm font-medium text-slate-600">Loading dashboard...</p>
+      <div className="min-h-screen bg-[#f7f5f0] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1e3a5f] mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+        </div>
       </div>
     );
   }
 
   if (!accessToken) {
     return (
-      <div className="min-h-screen bg-[#f7f5f0] flex items-center justify-center p-4">
-        <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-8 max-w-md text-center">
-          <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 font-semibold">
-            !
-          </div>
-          <h2 className="text-lg font-semibold text-slate-800 mb-2">Authentication Required</h2>
-          <p className="text-sm text-slate-600">Please log in to access your dashboard.</p>
+      <div className="min-h-screen bg-[#f7f5f0] flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600">Please log in to access this page.</p>
         </div>
       </div>
     );
   }
 
-  // Get recent submissions (last 5)
-  const recentSubmissions = submissions.slice(0, 5);
+  // Get user's station name
+  const userStation = user?.station || 'Your Station';
+
+  // Get the latest submission for the user's station
+  const userSubmission = submissions.find(s => s.station === userStation);
 
   return (
-    <div className="min-h-screen bg-[#f7f5f0] text-slate-800 antialiased pb-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
-        
+    <div className="min-h-screen bg-[#f7f5f0] py-8">
+      <div className="max-w-7xl mx-auto px-4">
         {/* Header */}
-        <div className="relative overflow-hidden bg-gradient-to-r from-[#12253d] to-[#1e3a5f] text-[#f3efe4] p-6 sm:p-8 rounded-xl shadow-md mb-8 border-b-4 border-[#a3782e]">
-          <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-white/10 text-[#c9b98a] text-xs font-semibold tracking-wider uppercase mb-3 backdrop-blur-sm">
-              <span className="w-2 h-2 rounded-full bg-[#a3782e]"></span>
-              Deputy Registrar Dashboard
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-2">
-              Welcome, {user?.fullName || 'Deputy Registrar'}
-            </h1>
-            <p className="text-sm sm:text-base text-[#cdd6e0] max-w-2xl">
-              Overview of your station requirement submissions. Track your drafts and submitted forms.
-            </p>
+        <div className="bg-gradient-to-b from-[#12253d] to-[#1e3a5f] text-[#f3efe4] p-8 rounded-lg mb-8 border-b-4 border-[#a3782e]">
+          <div className="text-xs uppercase tracking-widest text-[#c9b98a] mb-2">
+            DR Dashboard
           </div>
+          <h1 className="text-2xl font-semibold mb-2">Welcome back, {user?.fullName || 'DR'}</h1>
+          <p className="text-sm text-[#c9b98a]">
+            {userStation} · {user?.designation || 'District Registrar'}
+          </p>
         </div>
 
-        {/* Error Alert */}
-        {error && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-lg mb-6 flex items-start gap-3">
-            <span className="font-bold">⚠️</span>
-            <div className="text-sm">{error}</div>
-            <button
-              onClick={() => dispatch(clearError())}
-              className="ml-auto text-rose-600 hover:text-rose-800 text-xs font-semibold"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Stats Grid - Three Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-          {/* Card 1: Total File Folders */}
-          <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Total File Folders</div>
-                <div className="text-2xl font-extrabold text-slate-900 mt-1">{stats.totalFileFolders}</div>
+                <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">My Submissions</div>
+                <div className="text-3xl font-bold text-[#1e3a5f]">
+                  {userSubmission ? 1 : 0}
+                </div>
               </div>
-              <div className="w-10 h-10 rounded-lg bg-amber-50 text-[#a3782e] flex items-center justify-center text-lg">
-                📁
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
               </div>
             </div>
           </div>
 
-          {/* Card 2: Total Registers */}
-          <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+          <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Registers</div>
-                <div className="text-2xl font-extrabold text-slate-900 mt-1">{stats.totalRegisters}</div>
+                <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Court of Appeal Items</div>
+                <div className="text-3xl font-bold text-amber-600">
+                  {userSubmission?.courtOfAppealTotal || 0}
+                </div>
               </div>
-              <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-lg">
-                📖
+              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
               </div>
             </div>
           </div>
 
-          {/* Card 3: Total Submissions with Status */}
-          <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+          <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Submissions</div>
-                <div className="text-2xl font-extrabold text-slate-900 mt-1">{stats.totalSubmissions}</div>
+                <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Subordinate Courts Items</div>
+                <div className="text-3xl font-bold text-purple-600">
+                  {userSubmission?.subordinateCourtsTotal || 0}
+                </div>
               </div>
-              <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-lg">
-                📋
+              <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
               </div>
-            </div>
-            <div className="mt-2 flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-slate-500">Status:</span>
-              {stats.draftsCount > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">
-                  {stats.draftsCount} Draft{stats.draftsCount > 1 ? 's' : ''}
-                </span>
-              )}
-              {stats.submittedCount > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-800 text-xs font-semibold">
-                  {stats.submittedCount} Submitted
-                </span>
-              )}
-              {stats.totalSubmissions === 0 && (
-                <span className="text-xs text-slate-400">No submissions</span>
-              )}
             </div>
           </div>
         </div>
 
-        {/* Recent Submissions */}
-        <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
-            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Recent Submissions</h2>
-            <span className="text-xs text-slate-500">{stats.totalSubmissions} total</span>
-          </div>
-
-          {isLoading ? (
-            <div className="p-12 text-center">
-              <div className="w-8 h-8 border-4 border-[#1e3a5f]/20 border-t-[#1e3a5f] rounded-full animate-spin mx-auto"></div>
-              <p className="mt-3 text-sm text-slate-500">Loading submissions...</p>
-            </div>
-          ) : recentSubmissions.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
-                📋
+        {/* Status Card */}
+        <div className="bg-white border border-gray-300 rounded-lg p-6 mb-8">
+          <h3 className="font-semibold text-gray-800 mb-4">Your Submission Status</h3>
+          {userSubmission ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="border-r border-gray-200 pr-4">
+                <span className="text-xs text-gray-600">Status</span>
+                <span className="block text-lg font-semibold text-green-600">
+                  Submitted
+                </span>
               </div>
-              <h3 className="text-base font-semibold text-slate-800">No submissions yet</h3>
-              <p className="text-sm text-slate-500 mt-1">Start by creating your first station requirement submission.</p>
+              <div className="border-r border-gray-200 pr-4">
+                <span className="text-xs text-gray-600">Submitted On</span>
+                <span className="block text-lg font-semibold">
+                  {userSubmission.submittedAt 
+                    ? new Date(userSubmission.submittedAt).toLocaleDateString()
+                    : 'N/A'}
+                </span>
+              </div>
+              <div>
+                <span className="text-xs text-gray-600">Total Items</span>
+                <span className="block text-lg font-semibold">
+                  {(userSubmission.courtOfAppealTotal || 0) + (userSubmission.subordinateCourtsTotal || 0)}
+                </span>
+              </div>
             </div>
           ) : (
+            <div className="text-center py-6">
+              <p className="text-gray-600 mb-4">You haven't submitted any pending proceedings yet.</p>
+              <Link
+                to="/pending-proceedings"
+                className="inline-block px-6 py-2 bg-[#1e3a5f] text-white font-semibold rounded-md hover:bg-[#12253d] transition-colors"
+              >
+                Submit Now →
+              </Link>
+            </div>
+          )}
+        </div>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Link
+            to="/pending-proceedings"
+            className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow text-center"
+          >
+            <div className="w-12 h-12 bg-[#1e3a5f] rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </div>
+            <h4 className="font-semibold text-gray-800">{userSubmission ? 'Update Submission' : 'New Submission'}</h4>
+            <p className="text-sm text-gray-600">
+              {userSubmission ? 'Update your pending proceedings' : 'Submit your pending proceedings'}
+            </p>
+          </Link>
+
+          <Link
+            to="/pending-proceedings"
+            className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow text-center"
+          >
+            <div className="w-12 h-12 bg-[#1e3a5f] rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </div>
+            <h4 className="font-semibold text-gray-800">View Submission</h4>
+            <p className="text-sm text-gray-600">View your submitted data</p>
+          </Link>
+
+          <div className="bg-white border border-gray-300 rounded-lg p-6 text-center">
+            <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h4 className="font-semibold text-gray-800">Need Help?</h4>
+            <p className="text-sm text-gray-600">Contact the RHC office for assistance</p>
+          </div>
+        </div>
+
+        {/* Recent Submissions Table */}
+        {submissions.length > 0 && (
+          <div className="mt-8 bg-white border border-gray-300 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="font-semibold text-gray-800">Your Recent Submissions</h3>
+            </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    <th className="px-6 py-3">Station</th>
-                    <th className="px-6 py-3 text-right">File Folders</th>
-                    <th className="px-6 py-3 text-right">Registers</th>
-                    <th className="px-6 py-3">Status</th>
-                    <th className="px-6 py-3">Submitted</th>
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs uppercase tracking-wider text-gray-600">Station</th>
+                    <th className="px-4 py-3 text-center text-xs uppercase tracking-wider text-gray-600">Court of Appeal</th>
+                    <th className="px-4 py-3 text-center text-xs uppercase tracking-wider text-gray-600">Subordinate Courts</th>
+                    <th className="px-4 py-3 text-center text-xs uppercase tracking-wider text-gray-600">Total</th>
+                    <th className="px-4 py-3 text-center text-xs uppercase tracking-wider text-gray-600">Submitted</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200/70 text-sm">
-                  {recentSubmissions.map((submission: StationRequirementSummary) => (
-                    <tr key={submission.id || submission.station} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-slate-900">{submission.station}</td>
-                      <td className="px-6 py-4 text-right font-medium text-slate-800">
-                        <span className="inline-block px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 text-xs font-semibold">
-                          {submission.fileFoldersTotal.toLocaleString()}
-                        </span>
+                <tbody className="divide-y divide-gray-200">
+                  {submissions.slice(0, 5).map((submission) => (
+                    <tr key={submission.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                        {submission.station}
                       </td>
-                      <td className="px-6 py-4 text-right font-medium text-slate-800">
-                        <span className="inline-block px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 text-xs font-semibold">
-                          {submission.registersTotal.toLocaleString()}
-                        </span>
+                      <td className="px-4 py-3 text-sm text-center text-gray-600">
+                        {submission.courtOfAppealTotal}
                       </td>
-                      <td className="px-6 py-4">
-                        {getStatusBadge(submission.status)}
+                      <td className="px-4 py-3 text-sm text-center text-gray-600">
+                        {submission.subordinateCourtsTotal}
                       </td>
-                      <td className="px-6 py-4 text-slate-500 whitespace-nowrap text-xs">
-                        {formatDate(submission.submittedAt || submission.updatedAt)}
+                      <td className="px-4 py-3 text-sm text-center font-semibold">
+                        {submission.courtOfAppealTotal + submission.subordinateCourtsTotal}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center text-gray-600">
+                        {submission.submittedAt ? new Date(submission.submittedAt).toLocaleDateString() : 'N/A'}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        <p className="text-xs text-slate-400 mt-6 text-center">
-          Deputy Registrar Dashboard · Last updated {new Date().toLocaleString()}
-        </p>
+        {/* Error Display */}
+        {error && (
+          <div className="mt-6 bg-red-50 border border-red-300 text-red-800 px-4 py-3 rounded-md">
+            ✗ {error}
+            <button
+              onClick={() => dispatch(clearError())}
+              className="ml-4 text-sm font-semibold hover:text-red-600"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Auto-refresh indicator */}
+        <div className="mt-4 text-xs text-gray-400 text-center">
+          Auto-refreshes every 30 seconds
+        </div>
       </div>
     </div>
   );
