@@ -1,3 +1,5 @@
+// store/slices/authSlice.ts
+
 import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit';
 import axios from 'axios';
 import axiosClient from '../../api/api';
@@ -29,23 +31,31 @@ interface AuthState {
   maskedEmail: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  isInitializing: boolean; // Fixed: Added missing initialization flag
+  isInitializing: boolean;
   error: string | null;
 }
 
+// ✅ Load token from localStorage on initial state
+const loadTokenFromStorage = (): string | null => {
+  try {
+    return localStorage.getItem('accessToken');
+  } catch {
+    return null;
+  }
+};
+
 const initialState: AuthState = {
   user: null,
-  accessToken: null,
+  accessToken: loadTokenFromStorage(),
   maskedEmail: null,
-  isAuthenticated: false,
+  isAuthenticated: !!loadTokenFromStorage(),
   isLoading: false,
-  isInitializing: true, // Starts true to check session on app mount
+  isInitializing: true,
   error: null,
 };
 
 // --- ASYNC THUNKS ---
 
-// Step 1: Request OTP
 // Step 1: Request OTP
 export const requestOtp = createAsyncThunk<
   { email: string },
@@ -53,23 +63,22 @@ export const requestOtp = createAsyncThunk<
   { rejectValue: string }
 >('auth/requestOtp', async (payload, { rejectWithValue }) => {
   try {
+    console.log('📤 Requesting OTP for PJ:', payload.pjNumber);
+    
     const response = await axiosClient.post('/auth/login/request-otp', payload);
     
-    // Extract email from the message field
-    // The message format is: "A login code has been sent to o***6@gmail.com"
+    console.log('✅ OTP request response:', response.data);
+    
     let email = '';
     
-    // Try to extract from message
     if (response.data?.message) {
       const message = response.data.message;
-      // Look for email pattern in the message
       const emailMatch = message.match(/sent to (.+)$/);
       if (emailMatch) {
         email = emailMatch[1].trim();
       }
     }
     
-    // Fallback: check data fields (if they exist in other responses)
     if (!email) {
       email = response.data?.data?.email || 
               response.data?.email || 
@@ -79,12 +88,12 @@ export const requestOtp = createAsyncThunk<
 
     if (!email) {
       console.warn('Backend response missing expected email property:', response.data);
-      // Fallback with a generic message
       return { email: 'your registered email' };
     }
 
     return { email };
   } catch (err: unknown) {
+    console.error('❌ OTP request error:', err);
     if (axios.isAxiosError<ApiErrorResponse>(err)) {
       return rejectWithValue(
         err.response?.data?.message || 'Failed to send verification code.'
@@ -101,9 +110,22 @@ export const verifyOtp = createAsyncThunk<
   { rejectValue: string }
 >('auth/verifyOtp', async (payload, { rejectWithValue }) => {
   try {
+    console.log('📤 Verifying OTP for PJ:', payload.pjNumber);
+    
     const response = await axiosClient.post('/auth/login/verify-otp', payload);
-    return response.data.data;
+    const data = response.data.data;
+    
+    console.log('✅ OTP verification successful for:', data.user?.fullName);
+    
+    // ✅ Store token in localStorage
+    if (data.accessToken) {
+      localStorage.setItem('accessToken', data.accessToken);
+      axiosClient.defaults.headers.common['Authorization'] = `Bearer ${data.accessToken}`;
+    }
+    
+    return data;
   } catch (err: unknown) {
+    console.error('❌ OTP verification error:', err);
     if (axios.isAxiosError<ApiErrorResponse>(err)) {
       return rejectWithValue(
         err.response?.data?.message || 'Invalid verification code.'
@@ -120,9 +142,30 @@ export const refreshAccessToken = createAsyncThunk<
   { rejectValue: string }
 >('auth/refreshToken', async (_, { rejectWithValue }) => {
   try {
-    const response = await axiosClient.post('/auth/refresh');
-    return response.data.data;
+    console.log('🔄 Refreshing access token...');
+    
+    const response = await axiosClient.post('/auth/refresh', {}, {
+      withCredentials: true,
+    });
+    
+    const data = response.data.data;
+    const accessToken = data.accessToken;
+    
+    console.log('✅ Token refreshed successfully');
+    
+    // ✅ Store token in localStorage
+    if (accessToken) {
+      localStorage.setItem('accessToken', accessToken);
+      axiosClient.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+    }
+    
+    return data;
   } catch (err: unknown) {
+    console.error('❌ Token refresh failed:', err);
+    // ✅ Clear token on refresh failure
+    localStorage.removeItem('accessToken');
+    delete axiosClient.defaults.headers.common['Authorization'];
+    
     if (axios.isAxiosError<ApiErrorResponse>(err)) {
       return rejectWithValue(
         err.response?.data?.message || 'Session expired. Please log in again.'
@@ -139,10 +182,22 @@ export const fetchMe = createAsyncThunk<
   { rejectValue: string }
 >('auth/fetchMe', async (_, { rejectWithValue }) => {
   try {
+    console.log('📤 Fetching user profile...');
+    
     const response = await axiosClient.get('/auth/me');
-    return response.data.data;
+    const user = response.data.data;
+    
+    console.log('✅ User profile fetched:', user.fullName);
+    
+    return user;
   } catch (err: unknown) {
+    console.error('❌ Fetch user profile error:', err);
     if (axios.isAxiosError<ApiErrorResponse>(err)) {
+      // ✅ If 401, clear token
+      if (err.response?.status === 401) {
+        localStorage.removeItem('accessToken');
+        delete axiosClient.defaults.headers.common['Authorization'];
+      }
       return rejectWithValue(
         err.response?.data?.message || 'Failed to fetch user profile.'
       );
@@ -152,25 +207,50 @@ export const fetchMe = createAsyncThunk<
 });
 
 // Step 5: Check Auth (App Session Initialization)
-// In authSlice.ts
 export const checkAuth = createAsyncThunk<
   User,
   void,
   { rejectValue: string }
 >('auth/checkAuth', async (_, { dispatch, rejectWithValue }) => {
   try {
-    // 1. Try to refresh access token
+    console.log('🔍 Checking auth...');
+    console.log('📦 Token in localStorage:', !!localStorage.getItem('accessToken'));
+    
+    // ✅ First try to refresh the token (cookie should be sent automatically)
     const refreshResult = await dispatch(refreshAccessToken());
     
-    // If refresh failed (e.g. no cookie/session), don't attempt to fetch user
+    // If refresh failed, try to fetch user with existing token
     if (refreshAccessToken.rejected.match(refreshResult)) {
+      console.warn('⚠️ Token refresh failed, checking if we have a stored token...');
+      
+      const storedToken = localStorage.getItem('accessToken');
+      if (storedToken) {
+        console.log('🔑 Found stored token, trying to fetch user...');
+        axiosClient.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+        
+        try {
+          const user = await dispatch(fetchMe()).unwrap();
+          console.log('✅ Auth check successful with stored token:', user.fullName);
+          return user;
+        } catch {
+          console.warn('⚠️ Stored token is invalid, clearing...');
+          localStorage.removeItem('accessToken');
+          delete axiosClient.defaults.headers.common['Authorization'];
+          return rejectWithValue('Invalid stored token');
+        }
+      }
+      
       return rejectWithValue('No active session');
     }
 
-    // 2. Only fetch user profile if token refresh succeeded
+    // Fetch user profile after successful refresh
     const user = await dispatch(fetchMe()).unwrap();
+    console.log('✅ Auth check successful:', user.fullName);
     return user;
-  } catch {
+  } catch (error) {
+    console.error('❌ Auth check failed:', error);
+    localStorage.removeItem('accessToken');
+    delete axiosClient.defaults.headers.common['Authorization'];
     return rejectWithValue('Unauthenticated');
   }
 });
@@ -184,6 +264,8 @@ const authSlice = createSlice({
     setAccessToken: (state, action: PayloadAction<string>) => {
       state.accessToken = action.payload;
       state.isAuthenticated = true;
+      localStorage.setItem('accessToken', action.payload);
+      axiosClient.defaults.headers.common['Authorization'] = `Bearer ${action.payload}`;
     },
     clearMaskedEmail: (state) => {
       state.maskedEmail = null;
@@ -192,12 +274,16 @@ const authSlice = createSlice({
       state.error = null;
     },
     logout: (state) => {
+      console.log('🔓 Logging out...');
       state.user = null;
       state.accessToken = null;
       state.maskedEmail = null;
       state.isAuthenticated = false;
       state.error = null;
       state.isInitializing = false;
+      
+      localStorage.removeItem('accessToken');
+      delete axiosClient.defaults.headers.common['Authorization'];
     },
   },
   extraReducers: (builder) => {
@@ -239,15 +325,24 @@ const authSlice = createSlice({
         state.isAuthenticated = true;
       })
       .addCase(refreshAccessToken.rejected, (state) => {
+        // ✅ Clear state on refresh failure
         state.user = null;
         state.accessToken = null;
         state.isAuthenticated = false;
+        // Clear token from localStorage and axios headers
+        localStorage.removeItem('accessToken');
+        delete axiosClient.defaults.headers.common['Authorization'];
       })
 
       // --- fetchMe ---
       .addCase(fetchMe.fulfilled, (state, action) => {
         state.user = action.payload;
         state.isAuthenticated = true;
+      })
+      .addCase(fetchMe.rejected, () => {
+        // Don't clear state here - let checkAuth handle it
+        // Just log the error
+        console.warn('⚠️ Fetch user profile failed');
       })
 
       // --- checkAuth ---
@@ -258,12 +353,16 @@ const authSlice = createSlice({
         state.user = action.payload;
         state.isAuthenticated = true;
         state.isInitializing = false;
+        state.error = null;
       })
-      .addCase(checkAuth.rejected, (state) => {
+      .addCase(checkAuth.rejected, (state, action) => {
         state.user = null;
         state.accessToken = null;
         state.isAuthenticated = false;
         state.isInitializing = false;
+        state.error = action.payload || 'Session expired';
+        localStorage.removeItem('accessToken');
+        delete axiosClient.defaults.headers.common['Authorization'];
       });
   },
 });

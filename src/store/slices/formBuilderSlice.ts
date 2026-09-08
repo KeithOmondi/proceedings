@@ -229,7 +229,6 @@ export const getSubmissions = createAsyncThunk<
 
       const response = await axiosClient.get("/pending-proceedings", { params: cleanParams });
       
-      // ✅ Ensure we have data
       if (!response.data?.data) {
         throw new Error("Invalid response structure");
       }
@@ -317,10 +316,8 @@ export const createSubmission = createAsyncThunk<
     try {
       const response = await axiosClient.post("/pending-proceedings", payload);
       
-      // ✅ Debug log to see the actual response
       console.log("📤 Create submission response:", response.data);
       
-      // ✅ Validate response structure
       if (!response.data?.data?.submission) {
         console.error("❌ Invalid response structure:", response.data);
         return rejectWithValue("Invalid response structure from server");
@@ -347,10 +344,8 @@ export const updateSubmission = createAsyncThunk<
     try {
       const response = await axiosClient.put(`/pending-proceedings/${id}`, data);
       
-      // ✅ Debug log to see the actual response
       console.log("📤 Update submission response:", response.data);
       
-      // ✅ Validate response structure
       if (!response.data?.data?.submission) {
         console.error("❌ Invalid response structure:", response.data);
         return rejectWithValue("Invalid response structure from server");
@@ -475,7 +470,7 @@ export const getCategories = createAsyncThunk<
 // ============================================================
 
 export const downloadReport = createAsyncThunk<
-  { data: ReportData; format: string },
+  { data: ReportData; format: string } | Blob,
   { format?: 'pdf' | 'docx' | 'json'; fromDate?: string; toDate?: string },
   { rejectValue: string }
 >(
@@ -486,13 +481,23 @@ export const downloadReport = createAsyncThunk<
       if (fromDate) params.fromDate = fromDate;
       if (toDate) params.toDate = toDate;
       
+      // ✅ For PDF and DOCX, get blob response
+      if (format === 'pdf' || format === 'docx') {
+        const response = await axiosClient.get("/pending-proceedings/download-report", { 
+          params, 
+          responseType: 'blob' 
+        });
+        return response.data as Blob;
+      }
+      
+      // ✅ For JSON, get the data
       const response = await axiosClient.get("/pending-proceedings/download-report", { params });
       
       if (!response.data?.data) {
         throw new Error("Invalid response structure");
       }
       
-      return { data: response.data.data, format };
+      return { data: response.data.data, format: 'json' };
     } catch (err: unknown) {
       console.error("❌ Failed to download report:", err);
       if (axios.isAxiosError<ApiErrorResponse>(err)) {
@@ -634,7 +639,6 @@ const pendingProceedingsSlice = createSlice({
       .addCase(createSubmission.fulfilled, (state, action) => {
         state.isSubmitting = false;
         
-        // ✅ Safely access the submission
         const submission = action.payload?.submission;
         if (!submission) {
           console.error("❌ No submission in payload:", action.payload);
@@ -658,7 +662,6 @@ const pendingProceedingsSlice = createSlice({
       .addCase(updateSubmission.fulfilled, (state, action) => {
         state.isSubmitting = false;
         
-        // ✅ Safely access the submission
         const submission = action.payload?.submission;
         if (!submission) {
           console.error("❌ No submission in payload:", action.payload);
@@ -741,7 +744,11 @@ const pendingProceedingsSlice = createSlice({
       })
       .addCase(downloadReport.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.reportData = action.payload.data;
+        // Only set reportData if it's JSON format (has data property)
+        if (action.payload && typeof action.payload === 'object' && 'data' in action.payload) {
+          state.reportData = action.payload.data;
+        }
+        // For PDF/DOCX (Blob), we don't store in state
       })
       .addCase(downloadReport.rejected, (state, action) => {
         state.isLoading = false;

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import toast from 'react-hot-toast';
 import {
   getSubmissions,
   getSubmissionStats,
@@ -11,11 +12,14 @@ import {
   clearError,
 } from '../../store/slices/formBuilderSlice';
 import type { AppDispatch, RootState } from '../../store/store';
+import type { ReportData } from '../../store/slices/formBuilderSlice';
 
 const AdminPendingP: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const {
-    submissions = [], // Default to empty array
+    submissions = [],
+    stats,
+    dashboardStats,
     isLoading,
     error,
     pagination,
@@ -89,40 +93,72 @@ const AdminPendingP: React.FC = () => {
       setShowDeleteModal(false);
       setDeleteId(null);
       loadData();
+      toast.success('Submission deleted successfully');
     } catch (err) {
       console.error('Failed to delete submission:', err);
+      toast.error('Failed to delete submission');
     }
   };
 
-  const handleDownloadReport = async () => {
-    setIsDownloading(true);
-    try {
-      const result = await dispatch(downloadReport({
-        format: reportFormat,
-        fromDate: dateRange.from || undefined,
-        toDate: dateRange.to || undefined,
-      })).unwrap();
+// AdminPendingP.tsx - Updated handleDownloadReport
 
-      // If format is JSON, display the data
-      if (reportFormat === 'json') {
-        console.log('Report data:', result.data);
-      } else {
-        // For PDF/DOCX, handle download
-        // This will depend on your API response format
-        // If the API returns a blob, you can use:
-        // const blob = new Blob([result], { type: 'application/pdf' });
-        // const url = window.URL.createObjectURL(blob);
-        // const link = document.createElement('a');
-        // link.href = url;
-        // link.download = `pending-proceedings-report.${reportFormat}`;
-        // link.click();
+const handleDownloadReport = async () => {
+  setIsDownloading(true);
+  try {
+    const result = await dispatch(downloadReport({
+      format: reportFormat,
+      fromDate: dateRange.from || undefined,
+      toDate: dateRange.to || undefined,
+    })).unwrap();
+
+    // Handle different formats
+    if (reportFormat === 'json') {
+      // For JSON, result has { data, format }
+      const jsonData = (result as { data: ReportData; format: string }).data;
+      const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `pending-proceedings-report-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success('Report downloaded successfully!');
+    } else {
+      // For PDF/DOCX, the result is a Blob
+      const blob = result as Blob;
+      
+      // Check if blob is valid
+      if (!blob || blob.size === 0) {
+        toast.error('Received empty file. Please try again.');
+        return;
       }
-    } catch (err) {
-      console.error('Failed to download report:', err);
-    } finally {
-      setIsDownloading(false);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const extension = reportFormat === 'pdf' ? 'pdf' : 'docx';
+      link.download = `pending-proceedings-report-${new Date().toISOString().split('T')[0]}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success('Report downloaded successfully!');
     }
-  };
+  } catch (err) {
+    console.error('Failed to download report:', err);
+    // Check if the error response is a blob (HTML error page)
+    if (err instanceof Error && err.message.includes('404')) {
+      toast.error('Report endpoint not found. Please check the server.');
+    } else {
+      toast.error('Failed to download report. Please try again.');
+    }
+  } finally {
+    setIsDownloading(false);
+  }
+};
 
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { color: string; label: string }> = {
@@ -175,9 +211,51 @@ const AdminPendingP: React.FC = () => {
           </p>
         </div>
 
+        {/* Stats Cards */}
+        {dashboardStats && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div className="bg-white border border-gray-300 rounded-lg p-6">
+              <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Total Stations</div>
+              <div className="text-2xl font-bold text-[#1e3a5f]">{dashboardStats.totalStations}</div>
+            </div>
+            <div className="bg-white border border-gray-300 rounded-lg p-6">
+              <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Submitted</div>
+              <div className="text-2xl font-bold text-green-600">{dashboardStats.submittedCount}</div>
+            </div>
+            <div className="bg-white border border-gray-300 rounded-lg p-6">
+              <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Not Started</div>
+              <div className="text-2xl font-bold text-gray-600">{dashboardStats.notStartedCount}</div>
+            </div>
+            <div className="bg-white border border-gray-300 rounded-lg p-6">
+              <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Completion Rate</div>
+              <div className="text-2xl font-bold text-[#a3782e]">{dashboardStats.completionRate}%</div>
+            </div>
+          </div>
+        )}
 
-
-
+        {/* Stats Summary */}
+        {stats && (
+          <div className="bg-white border border-gray-300 rounded-lg p-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <span className="text-xs text-gray-600">Total Submissions</span>
+                <span className="block text-lg font-semibold">{stats.totalStations}</span>
+              </div>
+              <div>
+                <span className="text-xs text-gray-600">Submitted</span>
+                <span className="block text-lg font-semibold text-green-600">{stats.submitted}</span>
+              </div>
+              <div>
+                <span className="text-xs text-gray-600">Not Submitted</span>
+                <span className="block text-lg font-semibold text-gray-600">{stats.notSubmitted}</span>
+              </div>
+              <div>
+                <span className="text-xs text-gray-600">Not Started</span>
+                <span className="block text-lg font-semibold text-red-600">{stats.notStarted}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="bg-white border border-gray-300 rounded-lg p-4 mb-8">
