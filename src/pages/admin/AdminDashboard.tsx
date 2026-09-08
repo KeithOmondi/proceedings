@@ -1,11 +1,12 @@
 // pages/admin/AdminDashboard.tsx
 
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import {
   getSubmissionStats,
   getAdminDashboard,
+  getSubmissions,
   clearError,
 } from '../../store/slices/formBuilderSlice';
 import type { AppDispatch, RootState } from '../../store/store';
@@ -15,15 +16,23 @@ const AdminDashboard: React.FC = () => {
   const {
     stats,
     dashboardStats,
+    submissions,
     isLoading,
     error,
+    //pagination,
   } = useSelector((state: RootState) => state.pendingProceedings);
   const { accessToken, isInitializing } = useSelector((state: RootState) => state.auth);
 
-  // ✅ Define loadData with useCallback before it's used in useEffect
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
+
+  // ✅ Load data
   const loadData = useCallback(() => {
     dispatch(getSubmissionStats());
     dispatch(getAdminDashboard());
+    dispatch(getSubmissions({
+      page: 1,
+      limit: 100, // Fetch all stations
+    }));
   }, [dispatch]);
 
   // Load data on mount
@@ -33,16 +42,50 @@ const AdminDashboard: React.FC = () => {
     }
   }, [isInitializing, accessToken, loadData]);
 
-  // Auto-refresh every 30 seconds
+  // Auto-refresh every 60 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isLoading) {
         loadData();
       }
-    }, 30000);
+    }, 60000);
 
     return () => clearInterval(interval);
   }, [isLoading, loadData]);
+
+  // Calculate submission stats from submissions data
+  const getSubmissionStatsFromData = () => {
+    const total = submissions.length;
+    const submitted = submissions.filter(s => s.status === 'submitted').length;
+    const notSubmitted = total - submitted;
+    
+    return {
+      total,
+      submitted,
+      notSubmitted,
+      completionRate: total > 0 ? Math.round((submitted / total) * 100) : 0,
+    };
+  };
+
+  // Get stations with their submission status
+  const getStationStatuses = () => {
+    return submissions.map(sub => ({
+      station: sub.station,
+      status: sub.status,
+      courtOfAppealTotal: sub.courtOfAppealTotal || 0,
+      subordinateCourtsTotal: sub.subordinateCourtsTotal || 0,
+      totalItems: (sub.courtOfAppealTotal || 0) + (sub.subordinateCourtsTotal || 0),
+      submittedAt: sub.submittedAt,
+      submitterName: sub.submitterName || 'N/A',
+    }));
+  };
+
+  // Filter stations by status
+  const filteredStations = selectedStatus === 'all' 
+    ? getStationStatuses()
+    : getStationStatuses().filter(s => s.status === selectedStatus);
+
+  const calculatedStats = getSubmissionStatsFromData();
 
   if (isInitializing || isLoading) {
     return (
@@ -79,68 +122,84 @@ const AdminDashboard: React.FC = () => {
           </p>
         </div>
 
-        {/* Stats Cards */}
-        {dashboardStats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Total Stations</div>
-                  <div className="text-3xl font-bold text-[#1e3a5f]">{dashboardStats.totalStations}</div>
-                </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                </div>
+        {/* Main Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Total Stations</div>
+                <div className="text-3xl font-bold text-[#1e3a5f]">{calculatedStats.total}</div>
               </div>
-            </div>
-
-            <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Submitted</div>
-                  <div className="text-3xl font-bold text-green-600">{dashboardStats.submittedCount}</div>
-                </div>
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                  <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Not Started</div>
-                  <div className="text-3xl font-bold text-gray-600">{dashboardStats.notStartedCount}</div>
-                </div>
-                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
-                  <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Completion Rate</div>
-                  <div className="text-3xl font-bold text-[#a3782e]">{dashboardStats.completionRate}%</div>
-                </div>
-                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
-                  <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                  </svg>
-                </div>
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
               </div>
             </div>
           </div>
-        )}
 
-        {/* Stats Summary */}
+          <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Submitted</div>
+                <div className="text-3xl font-bold text-green-600">{calculatedStats.submitted}</div>
+              </div>
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Not Submitted</div>
+                <div className="text-3xl font-bold text-red-600">{calculatedStats.notSubmitted}</div>
+              </div>
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Completion Rate</div>
+                <div className="text-3xl font-bold text-[#a3782e]">{calculatedStats.completionRate}%</div>
+              </div>
+              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="bg-white border border-gray-300 rounded-lg p-6 mb-8">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">Overall Progress</span>
+            <span className="text-sm font-medium text-[#1e3a5f]">{calculatedStats.completionRate}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-4">
+            <div 
+              className="bg-[#1e3a5f] h-4 rounded-full transition-all duration-500"
+              style={{ width: `${calculatedStats.completionRate}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-2 text-xs text-gray-500">
+            <span>{calculatedStats.submitted} Submitted</span>
+            <span>{calculatedStats.notSubmitted} Not Submitted</span>
+          </div>
+        </div>
+
+        {/* Stats Summary from API */}
         {stats && (
           <div className="bg-white border border-gray-300 rounded-lg p-6 mb-8">
             <h3 className="font-semibold text-gray-800 mb-4">Submission Summary</h3>
@@ -203,6 +262,86 @@ const AdminDashboard: React.FC = () => {
           </div>
         )}
 
+        {/* Station List */}
+        <div className="bg-white border border-gray-300 rounded-lg overflow-hidden mb-8">
+          <div className="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4">
+            <h3 className="font-semibold text-gray-800">All Stations</h3>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Filter:</label>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Stations</option>
+                <option value="submitted">Submitted</option>
+                <option value="not_started">Not Submitted</option>
+              </select>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs uppercase tracking-wider text-gray-600">Station</th>
+                  <th className="px-4 py-3 text-left text-xs uppercase tracking-wider text-gray-600">Submitter</th>
+                  <th className="px-4 py-3 text-center text-xs uppercase tracking-wider text-gray-600">Court of Appeal</th>
+                  <th className="px-4 py-3 text-center text-xs uppercase tracking-wider text-gray-600">Subordinate Courts</th>
+                  <th className="px-4 py-3 text-center text-xs uppercase tracking-wider text-gray-600">Total</th>
+                  <th className="px-4 py-3 text-center text-xs uppercase tracking-wider text-gray-600">Status</th>
+                  <th className="px-4 py-3 text-center text-xs uppercase tracking-wider text-gray-600">Submitted At</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredStations.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                      No stations found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStations.map((station) => (
+                    <tr key={station.station} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                        {station.station}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {station.submitterName}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center text-gray-600">
+                        {station.courtOfAppealTotal}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center text-gray-600">
+                        {station.subordinateCourtsTotal}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center font-semibold">
+                        {station.totalItems}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          station.status === 'submitted' 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {station.status === 'submitted' ? 'Submitted' : 'Not Submitted'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center text-gray-600">
+                        {station.submittedAt ? new Date(station.submittedAt).toLocaleDateString() : 'N/A'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-6 py-3 border-t border-gray-200 bg-gray-50">
+            <div className="text-sm text-gray-600">
+              Showing {filteredStations.length} of {getStationStatuses().length} stations
+            </div>
+          </div>
+        </div>
+
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Link
@@ -214,7 +353,7 @@ const AdminDashboard: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
               </svg>
             </div>
-            <h4 className="font-semibold text-gray-800">View Submissions</h4>
+            <h4 className="font-semibold text-gray-800">View All Submissions</h4>
             <p className="text-sm text-gray-600">Manage all pending proceedings submissions</p>
           </Link>
 
@@ -260,7 +399,7 @@ const AdminDashboard: React.FC = () => {
 
         {/* Auto-refresh indicator */}
         <div className="mt-4 text-xs text-gray-400 text-center">
-          Auto-refreshes every 30 seconds
+          Auto-refreshes every 60 seconds
         </div>
       </div>
     </div>
