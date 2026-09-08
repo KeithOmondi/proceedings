@@ -11,6 +11,12 @@ import {
 } from '../../store/slices/formBuilderSlice';
 import type { AppDispatch, RootState } from '../../store/store';
 
+interface ModalData {
+  title: string;
+  stations: string[];
+  count: number;
+}
+
 const AdminDashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const {
@@ -23,6 +29,8 @@ const AdminDashboard: React.FC = () => {
   const { accessToken, isInitializing } = useSelector((state: RootState) => state.auth);
 
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [modalData, setModalData] = useState<ModalData | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Total stations from the users table (hardcoded for now, should come from API)
   const TOTAL_STATIONS = 62;
@@ -74,6 +82,28 @@ const AdminDashboard: React.FC = () => {
     }));
   };
 
+  // Get stations by status for modal
+  const getStationsByStatus = (status: string): string[] => {
+    const stationStatuses = getStationStatuses();
+    if (status === 'submitted') {
+      return stationStatuses.filter(s => s.isSubmitted).map(s => s.station);
+    } else if (status === 'not_submitted') {
+      return stationStatuses.filter(s => !s.isSubmitted).map(s => s.station);
+    }
+    return stationStatuses.map(s => s.station);
+  };
+
+  // Handle card click
+  const handleCardClick = (title: string, status: string) => {
+    const stations = getStationsByStatus(status);
+    setModalData({
+      title,
+      stations,
+      count: stations.length,
+    });
+    setIsModalOpen(true);
+  };
+
   // Filter stations by status
   const filteredStations = selectedStatus === 'all' 
     ? getStationStatuses()
@@ -114,9 +144,12 @@ const AdminDashboard: React.FC = () => {
           </p>
         </div>
 
-        {/* Main Stats Cards */}
+        {/* Main Stats Cards - Clickable */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
+          <div 
+            onClick={() => handleCardClick('All Stations', 'all')}
+            className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow cursor-pointer hover:border-[#1e3a5f]"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Total Stations</div>
@@ -128,9 +161,13 @@ const AdminDashboard: React.FC = () => {
                 </svg>
               </div>
             </div>
+            <div className="mt-2 text-xs text-gray-400">Click to view all</div>
           </div>
 
-          <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
+          <div 
+            onClick={() => handleCardClick('Submitted Stations', 'submitted')}
+            className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow cursor-pointer hover:border-green-500"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Submitted</div>
@@ -142,9 +179,13 @@ const AdminDashboard: React.FC = () => {
                 </svg>
               </div>
             </div>
+            <div className="mt-2 text-xs text-gray-400">Click to view all</div>
           </div>
 
-          <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
+          <div 
+            onClick={() => handleCardClick('Not Submitted Stations', 'not_submitted')}
+            className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow cursor-pointer hover:border-red-500"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Not Submitted</div>
@@ -156,6 +197,7 @@ const AdminDashboard: React.FC = () => {
                 </svg>
               </div>
             </div>
+            <div className="mt-2 text-xs text-gray-400">Click to view all</div>
           </div>
 
           <div className="bg-white border border-gray-300 rounded-lg p-6 hover:shadow-md transition-shadow">
@@ -393,6 +435,58 @@ const AdminDashboard: React.FC = () => {
           Auto-refreshes every 60 seconds
         </div>
       </div>
+
+      {/* Modal */}
+      {isModalOpen && modalData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col shadow-xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">{modalData.title}</h3>
+                <p className="text-sm text-gray-500">Total: {modalData.count} stations</p>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {modalData.stations.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">No stations found</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {modalData.stations.map((station, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      <span className="text-sm text-gray-600">{index + 1}.</span>
+                      <span className="text-sm font-medium text-gray-800">{station}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="w-full px-4 py-2 bg-[#1e3a5f] text-white font-semibold rounded-md hover:bg-[#12253d] transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
