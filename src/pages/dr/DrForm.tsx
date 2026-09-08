@@ -1,4 +1,4 @@
-// DrForm.tsx
+// pages/dr/DrForm.tsx
 
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
@@ -12,7 +12,7 @@ import {
   type PendingProceedingItem,
   type SubmissionStatus,
   type StationRequirementSubmission,
-} from '../../store/slices/formBuilderSlice';
+} from '../../store/slices/formBuilderSlice'; // ✅ Fixed import
 import type { AppDispatch, RootState } from '../../store/store';
 
 // Define categories directly in the component
@@ -60,17 +60,27 @@ const populateFromSubmission = (
 
   if (!submission) return { courtOfAppealValues, subordinateCourtsValues };
 
+  // ✅ Normalize division names
+  const normalizeDivision = (division: string): string => {
+    if (division === 'Pending Proceedings to Subordinate Courts') {
+      return 'Pending Proceedings from Subordinate Courts';
+    }
+    return division;
+  };
+
   // Populate Court of Appeal
   submission.courtOfAppeal.forEach((item) => {
-    if (courtOfAppealValues[item.division] && courtOfAppealValues[item.division][item.name] !== undefined) {
-      courtOfAppealValues[item.division][item.name] = item.quantity;
+    const normalizedDivision = normalizeDivision(item.division);
+    if (courtOfAppealValues[normalizedDivision] && courtOfAppealValues[normalizedDivision][item.name] !== undefined) {
+      courtOfAppealValues[normalizedDivision][item.name] = item.quantity;
     }
   });
 
   // Populate Subordinate Courts
   submission.subordinateCourts.forEach((item) => {
-    if (subordinateCourtsValues[item.division] && subordinateCourtsValues[item.division][item.name] !== undefined) {
-      subordinateCourtsValues[item.division][item.name] = item.quantity;
+    const normalizedDivision = normalizeDivision(item.division);
+    if (subordinateCourtsValues[normalizedDivision] && subordinateCourtsValues[normalizedDivision][item.name] !== undefined) {
+      subordinateCourtsValues[normalizedDivision][item.name] = item.quantity;
     }
   });
 
@@ -87,9 +97,18 @@ const calculateTotal = (values: CategoryValues): number => {
 const collectItems = (values: CategoryValues): PendingProceedingItem[] => {
   const items: PendingProceedingItem[] = [];
   Object.entries(values).forEach(([division, cases]) => {
+    // ✅ Normalize the division name
+    const normalizedDivision = division === 'Pending Proceedings to Subordinate Courts' 
+      ? 'Pending Proceedings from Subordinate Courts' 
+      : division;
+      
     Object.entries(cases).forEach(([name, quantity]) => {
       if (quantity > 0) {
-        items.push({ division, name, quantity });
+        items.push({ 
+          division: normalizedDivision,
+          name, 
+          quantity 
+        });
       }
     });
   });
@@ -183,7 +202,6 @@ const DrForm: React.FC<DrFormProps> = ({
             return;
           }
 
-          // Populate form with draft data
           setFormData({
             station: submission.station,
             status: submission.status,
@@ -202,12 +220,6 @@ const DrForm: React.FC<DrFormProps> = ({
           }
           
           toast.success('Draft loaded successfully');
-          console.log('✅ Draft loaded successfully:', {
-            id: submission.id,
-            station: submission.station,
-            courtOfAppeal: submission.courtOfAppeal.length,
-            subordinateCourts: submission.subordinateCourts.length,
-          });
         } catch (err) {
           console.error('❌ Failed to load draft:', err);
           toast.error('Failed to load draft. Please try again.');
@@ -411,11 +423,9 @@ const DrForm: React.FC<DrFormProps> = ({
         </div>
 
         {categoriesList.map((division) => {
-          // Get items for this division from the static categories
           const categoryData = categories.find(c => c.category === division);
           const items = categoryData?.items || [];
 
-          // If no items found, show a message
           if (items.length === 0) {
             return (
               <div key={division} className="border border-gray-200 rounded-lg overflow-hidden">
