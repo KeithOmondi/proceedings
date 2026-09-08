@@ -19,11 +19,18 @@ const AdminDashboard: React.FC = () => {
     submissions,
     isLoading,
     error,
-    //pagination,
   } = useSelector((state: RootState) => state.pendingProceedings);
   const { accessToken, isInitializing } = useSelector((state: RootState) => state.auth);
 
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+
+  // Total stations from the users table (hardcoded for now, should come from API)
+  const TOTAL_STATIONS = 62;
+  const SUBMITTED_COUNT = stats?.submitted || 0;
+  const NOT_SUBMITTED_COUNT = TOTAL_STATIONS - SUBMITTED_COUNT;
+  const COMPLETION_RATE = TOTAL_STATIONS > 0 
+    ? Math.round((SUBMITTED_COUNT / TOTAL_STATIONS) * 100) 
+    : 0;
 
   // ✅ Load data
   const loadData = useCallback(() => {
@@ -31,7 +38,7 @@ const AdminDashboard: React.FC = () => {
     dispatch(getAdminDashboard());
     dispatch(getSubmissions({
       page: 1,
-      limit: 100, // Fetch all stations
+      limit: 100,
     }));
   }, [dispatch]);
 
@@ -53,20 +60,6 @@ const AdminDashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, [isLoading, loadData]);
 
-  // Calculate submission stats from submissions data
-  const getSubmissionStatsFromData = () => {
-    const total = submissions.length;
-    const submitted = submissions.filter(s => s.status === 'submitted').length;
-    const notSubmitted = total - submitted;
-    
-    return {
-      total,
-      submitted,
-      notSubmitted,
-      completionRate: total > 0 ? Math.round((submitted / total) * 100) : 0,
-    };
-  };
-
   // Get stations with their submission status
   const getStationStatuses = () => {
     return submissions.map(sub => ({
@@ -77,6 +70,7 @@ const AdminDashboard: React.FC = () => {
       totalItems: (sub.courtOfAppealTotal || 0) + (sub.subordinateCourtsTotal || 0),
       submittedAt: sub.submittedAt,
       submitterName: sub.submitterName || 'N/A',
+      isSubmitted: sub.status === 'submitted',
     }));
   };
 
@@ -84,8 +78,6 @@ const AdminDashboard: React.FC = () => {
   const filteredStations = selectedStatus === 'all' 
     ? getStationStatuses()
     : getStationStatuses().filter(s => s.status === selectedStatus);
-
-  const calculatedStats = getSubmissionStatsFromData();
 
   if (isInitializing || isLoading) {
     return (
@@ -128,7 +120,7 @@ const AdminDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Total Stations</div>
-                <div className="text-3xl font-bold text-[#1e3a5f]">{calculatedStats.total}</div>
+                <div className="text-3xl font-bold text-[#1e3a5f]">{TOTAL_STATIONS}</div>
               </div>
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
                 <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -142,7 +134,7 @@ const AdminDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Submitted</div>
-                <div className="text-3xl font-bold text-green-600">{calculatedStats.submitted}</div>
+                <div className="text-3xl font-bold text-green-600">{SUBMITTED_COUNT}</div>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
                 <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -156,7 +148,7 @@ const AdminDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Not Submitted</div>
-                <div className="text-3xl font-bold text-red-600">{calculatedStats.notSubmitted}</div>
+                <div className="text-3xl font-bold text-red-600">{NOT_SUBMITTED_COUNT}</div>
               </div>
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                 <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -170,7 +162,7 @@ const AdminDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Completion Rate</div>
-                <div className="text-3xl font-bold text-[#a3782e]">{calculatedStats.completionRate}%</div>
+                <div className="text-3xl font-bold text-[#a3782e]">{COMPLETION_RATE}%</div>
               </div>
               <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
                 <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -185,17 +177,17 @@ const AdminDashboard: React.FC = () => {
         <div className="bg-white border border-gray-300 rounded-lg p-6 mb-8">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-700">Overall Progress</span>
-            <span className="text-sm font-medium text-[#1e3a5f]">{calculatedStats.completionRate}%</span>
+            <span className="text-sm font-medium text-[#1e3a5f]">{COMPLETION_RATE}%</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-4">
             <div 
               className="bg-[#1e3a5f] h-4 rounded-full transition-all duration-500"
-              style={{ width: `${calculatedStats.completionRate}%` }}
+              style={{ width: `${COMPLETION_RATE}%` }}
             />
           </div>
           <div className="flex justify-between mt-2 text-xs text-gray-500">
-            <span>{calculatedStats.submitted} Submitted</span>
-            <span>{calculatedStats.notSubmitted} Not Submitted</span>
+            <span>{SUBMITTED_COUNT} Submitted</span>
+            <span>{NOT_SUBMITTED_COUNT} Not Submitted</span>
           </div>
         </div>
 
@@ -206,19 +198,19 @@ const AdminDashboard: React.FC = () => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="border-r border-gray-200 pr-4">
                 <span className="text-xs text-gray-600">Total Stations</span>
-                <span className="block text-xl font-semibold">{stats.totalStations}</span>
+                <span className="block text-xl font-semibold">{TOTAL_STATIONS}</span>
               </div>
               <div className="border-r border-gray-200 pr-4">
                 <span className="text-xs text-gray-600">Submitted</span>
-                <span className="block text-xl font-semibold text-green-600">{stats.submitted}</span>
+                <span className="block text-xl font-semibold text-green-600">{SUBMITTED_COUNT}</span>
               </div>
               <div className="border-r border-gray-200 pr-4">
                 <span className="text-xs text-gray-600">Not Submitted</span>
-                <span className="block text-xl font-semibold text-gray-600">{stats.notSubmitted}</span>
+                <span className="block text-xl font-semibold text-gray-600">{NOT_SUBMITTED_COUNT}</span>
               </div>
               <div>
-                <span className="text-xs text-gray-600">Not Started</span>
-                <span className="block text-xl font-semibold text-red-600">{stats.notStarted}</span>
+                <span className="text-xs text-gray-600">Completion Rate</span>
+                <span className="block text-xl font-semibold text-[#a3782e]">{COMPLETION_RATE}%</span>
               </div>
             </div>
           </div>
@@ -262,10 +254,10 @@ const AdminDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* Station List */}
+        {/* Submissions List */}
         <div className="bg-white border border-gray-300 rounded-lg overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4">
-            <h3 className="font-semibold text-gray-800">All Stations</h3>
+            <h3 className="font-semibold text-gray-800">Recent Submissions</h3>
             <div className="flex items-center gap-2">
               <label className="text-sm text-gray-600">Filter:</label>
               <select
@@ -273,9 +265,8 @@ const AdminDashboard: React.FC = () => {
                 onChange={(e) => setSelectedStatus(e.target.value)}
                 className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="all">All Stations</option>
+                <option value="all">All Submissions</option>
                 <option value="submitted">Submitted</option>
-                <option value="not_started">Not Submitted</option>
               </select>
             </div>
           </div>
@@ -296,7 +287,7 @@ const AdminDashboard: React.FC = () => {
                 {filteredStations.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
-                      No stations found
+                      No submissions found
                     </td>
                   </tr>
                 ) : (
@@ -337,7 +328,7 @@ const AdminDashboard: React.FC = () => {
           </div>
           <div className="px-6 py-3 border-t border-gray-200 bg-gray-50">
             <div className="text-sm text-gray-600">
-              Showing {filteredStations.length} of {getStationStatuses().length} stations
+              Showing {filteredStations.length} of {getStationStatuses().length} submissions
             </div>
           </div>
         </div>
