@@ -22,7 +22,7 @@ const PENDING_PROCEEDINGS_CATEGORIES = {
     "Criminal",
     "Succession"
   ],
-  "Pending Proceedings to Subordinate Courts": [
+  "Pending Proceedings from Subordinate Courts": [
     "Civil",
     "Criminal",
     "Succession"
@@ -142,7 +142,7 @@ const DrForm: React.FC<DrFormProps> = ({
   // Get category names from static categories
   const categoryNames = categories.map(c => c.category);
   const courtOfAppealCategory = 'Pending Proceedings to Court of Appeal';
-  const subordinateCourtsCategory = 'Pending Proceedings to Subordinate Courts';
+  const subordinateCourtsCategory = 'Pending Proceedings from Subordinate Courts';
 
   // Initialize state based on whether we're in edit mode
   const getInitialValues = (): { courtOfAppealValues: CategoryValues; subordinateCourtsValues: CategoryValues } => {
@@ -604,7 +604,7 @@ const DrForm: React.FC<DrFormProps> = ({
               handleSubordinateCourtsChange,
               'sub',
               subordinateCourtsTotal,
-              'Pending Proceedings to Subordinate Courts',
+              'Pending Proceedings from Subordinate Courts',
               [subordinateCourtsCategory]
             )}
           </div>
