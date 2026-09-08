@@ -16,8 +16,6 @@ const AdminPendingP: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const {
     submissions = [], // Default to empty array
-    stats,
-    dashboardStats,
     isLoading,
     error,
     pagination,
@@ -177,51 +175,9 @@ const AdminPendingP: React.FC = () => {
           </p>
         </div>
 
-        {/* Stats Cards */}
-        {dashboardStats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-white border border-gray-300 rounded-lg p-6">
-              <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Total Stations</div>
-              <div className="text-2xl font-bold text-[#1e3a5f]">{dashboardStats.totalStations}</div>
-            </div>
-            <div className="bg-white border border-gray-300 rounded-lg p-6">
-              <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Submitted</div>
-              <div className="text-2xl font-bold text-green-600">{dashboardStats.submittedCount}</div>
-            </div>
-            <div className="bg-white border border-gray-300 rounded-lg p-6">
-              <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Not Started</div>
-              <div className="text-2xl font-bold text-gray-600">{dashboardStats.notStartedCount}</div>
-            </div>
-            <div className="bg-white border border-gray-300 rounded-lg p-6">
-              <div className="text-xs uppercase tracking-wider text-gray-600 mb-1">Completion Rate</div>
-              <div className="text-2xl font-bold text-[#a3782e]">{dashboardStats.completionRate}%</div>
-            </div>
-          </div>
-        )}
 
-        {/* Stats Summary */}
-        {stats && (
-          <div className="bg-white border border-gray-300 rounded-lg p-4 mb-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <span className="text-xs text-gray-600">Total Submissions</span>
-                <span className="block text-lg font-semibold">{stats.totalStations}</span>
-              </div>
-              <div>
-                <span className="text-xs text-gray-600">Submitted</span>
-                <span className="block text-lg font-semibold text-green-600">{stats.submitted}</span>
-              </div>
-              <div>
-                <span className="text-xs text-gray-600">Not Submitted</span>
-                <span className="block text-lg font-semibold text-gray-600">{stats.notSubmitted}</span>
-              </div>
-              <div>
-                <span className="text-xs text-gray-600">Not Started</span>
-                <span className="block text-lg font-semibold text-red-600">{stats.notStarted}</span>
-              </div>
-            </div>
-          </div>
-        )}
+
+
 
         {/* Filters */}
         <div className="bg-white border border-gray-300 rounded-lg p-4 mb-8">
