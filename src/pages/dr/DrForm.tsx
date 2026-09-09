@@ -12,7 +12,7 @@ import {
   type PendingProceedingItem,
   type SubmissionStatus,
   type StationRequirementSubmission,
-} from '../../store/slices/formBuilderSlice'; // ✅ Fixed import
+} from '../../store/slices/formBuilderSlice';
 import type { AppDispatch, RootState } from '../../store/store';
 
 // Define categories directly in the component
@@ -124,6 +124,13 @@ interface DrFormProps {
   onDraftLoaded?: (submission: StationRequirementSubmission) => void;
 }
 
+// ✅ Type for collected form data
+interface CollectedData {
+  station: string;
+  courtOfAppeal: PendingProceedingItem[];
+  subordinateCourts: PendingProceedingItem[];
+}
+
 const DrForm: React.FC<DrFormProps> = ({
   editMode = false,
   submissionId,
@@ -185,6 +192,9 @@ const DrForm: React.FC<DrFormProps> = ({
   const [syncedId, setSyncedId] = useState<string | undefined>(
     editMode ? submissionId : undefined
   );
+
+  // ✅ Nil Return confirmation dialog state
+  const [showNilConfirmDialog, setShowNilConfirmDialog] = useState(false);
 
   // Load draft when loadDraftId is provided
   useEffect(() => {
@@ -294,7 +304,7 @@ const DrForm: React.FC<DrFormProps> = ({
     }));
   };
 
-  const collectData = () => {
+  const collectData = (): CollectedData => {
     return {
       station: formData.station,
       courtOfAppeal: collectItems(courtOfAppealValues),
@@ -330,32 +340,15 @@ const DrForm: React.FC<DrFormProps> = ({
     setShowConfirmDialog(false);
   };
 
-  const handleSubmit = async (): Promise<void> => {
-    if (isSubmitted) {
-      toast.error('This submission has already been submitted and cannot be modified.');
-      return;
-    }
-
-    if (!formData.station.trim()) {
-      toast.error('Please enter a station name.');
-      return;
-    }
-
-    const data = collectData();
-    const hasCourtOfAppeal = data.courtOfAppeal.length > 0;
-    const hasSubordinateCourts = data.subordinateCourts.length > 0;
-
-    if (!hasCourtOfAppeal && !hasSubordinateCourts) {
-      toast.error('Enter at least one quantity greater than 0 in either Court of Appeal or Subordinate Courts.');
-      return;
-    }
-
+  // ✅ Extract submission logic to a separate function with proper typing
+  const submitFormData = async (data: CollectedData): Promise<void> => {
     const loadingToast = toast.loading('Submitting...');
 
     console.log('📤 Submitting pending proceedings:', {
       station: data.station,
       courtOfAppeal: data.courtOfAppeal,
       subordinateCourts: data.subordinateCourts,
+      isNilReturn: data.courtOfAppeal.length === 0 && data.subordinateCourts.length === 0,
     });
 
     try {
@@ -387,7 +380,6 @@ const DrForm: React.FC<DrFormProps> = ({
       console.log('✅ Submission successful:', result);
 
       setIsSubmitted(true);
-
       setFormData(prev => ({ ...prev, status: 'submitted' }));
 
       if (onSubmitted) {
@@ -398,6 +390,42 @@ const DrForm: React.FC<DrFormProps> = ({
       console.error('❌ Submission error:', err);
       toast.error(errorMsg, { id: loadingToast });
     }
+  };
+
+  // ✅ Updated handleSubmit to allow nil returns
+  const handleSubmit = async (): Promise<void> => {
+    if (isSubmitted) {
+      toast.error('This submission has already been submitted and cannot be modified.');
+      return;
+    }
+
+    if (!formData.station.trim()) {
+      toast.error('Please enter a station name.');
+      return;
+    }
+
+    const data = collectData();
+    const hasCourtOfAppeal = data.courtOfAppeal.length > 0;
+    const hasSubordinateCourts = data.subordinateCourts.length > 0;
+
+    // ✅ Allow nil returns (all zeros)
+    if (!hasCourtOfAppeal && !hasSubordinateCourts) {
+      setShowNilConfirmDialog(true);
+      return;
+    }
+
+    await submitFormData(data);
+  };
+
+  // ✅ Nil confirmation handlers
+  const confirmNilSubmit = async (): Promise<void> => {
+    setShowNilConfirmDialog(false);
+    const data = collectData();
+    await submitFormData(data);
+  };
+
+  const cancelNilSubmit = (): void => {
+    setShowNilConfirmDialog(false);
   };
 
   // Render category section
@@ -647,11 +675,18 @@ const DrForm: React.FC<DrFormProps> = ({
           {!isSubmitted && (
             <button
               onClick={handleSubmitDraft}
-              disabled={isSubmitting || totalItems === 0}
+              disabled={isSubmitting}
               className="px-6 py-3 bg-[#1e3a5f] text-white font-semibold rounded-md hover:bg-[#12253d] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Submitting...' : (isEditing ? 'Update Submission' : 'Submit')}
             </button>
+          )}
+
+          {/* ✅ Show hint that nil returns are allowed */}
+          {!isSubmitted && totalItems === 0 && (
+            <span className="text-sm text-purple-600">
+              💡 You can submit a nil return if you have no pending proceedings
+            </span>
           )}
 
           {isSubmitted && (
@@ -682,6 +717,36 @@ const DrForm: React.FC<DrFormProps> = ({
                   className="px-4 py-2 bg-[#1e3a5f] text-white font-semibold rounded-md hover:bg-[#12253d] transition-colors"
                 >
                   Submit
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ✅ Nil Return Confirmation Dialog */}
+        {showNilConfirmDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-xl">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirm Nil Return</h3>
+              <p className="text-gray-600 mb-4">
+                You are about to submit a <strong>nil return</strong> (all quantities are zero).
+                <br /><br />
+                This confirms that you have reviewed the request and there are no pending proceedings to report.
+                <br /><br />
+                <span className="text-sm text-gray-500">You can still update this submission later if needed.</span>
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={cancelNilSubmit}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmNilSubmit}
+                  className="px-4 py-2 bg-purple-600 text-white font-semibold rounded-md hover:bg-purple-700 transition-colors"
+                >
+                  Submit Nil Return
                 </button>
               </div>
             </div>
