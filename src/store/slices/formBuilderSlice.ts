@@ -52,6 +52,7 @@ export interface SubmissionStats {
   submitted: number;
   notSubmitted: number;
   notStarted: number;
+  nilReturnCount: number;  // ✅ Added
 }
 
 export interface CategoryItem {
@@ -112,6 +113,7 @@ export interface AdminDashboardStats {
   submissionsToday: number;
   submittedCount: number;
   notStartedCount: number;
+  nilReturnCount: number;  // ✅ Added
   completionRate: number;
   recentActivity: Array<{
     id: string;
@@ -132,6 +134,7 @@ export interface ReportData {
     'Court of Appeal Items': number;
     'Subordinate Courts Items': number;
     'Total Items': number;
+    'Nil Return': boolean;  // ✅ Added
     'Submitted At': string;
     'Last Updated': string;
   }>;
@@ -141,6 +144,7 @@ export interface ReportData {
     notSubmitted: number;
     totalCourtOfAppeal: number;
     totalSubordinateCourts: number;
+    nilReturnCount: number;  // ✅ Added
     completionRate: number;
   };
 }
